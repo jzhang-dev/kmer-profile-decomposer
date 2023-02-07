@@ -1,0 +1,12 @@
+image:
+  file: .gitpod.Dockerfile
+
+tasks:
+  - name: Install development dependencies
+    init: |
+      pip install -v -r dev/requirements.txt &&
+      gp sync-done dev_dependencies
+  - name: Install current project
+    init: | 
+      gp sync-await dev_dependencies && 
+      pip install -ve .
