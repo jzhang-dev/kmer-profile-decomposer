@@ -18,4 +18,4 @@ See [demo.py.ipynb](https://github.com/jzhang-dev/kmer-profile-decomposer/blob/m
 
 ## References
 
-Vurture, G. W., Sedlazeck, F. J., Nattestad, M., Underwood, C. J., Fang, H., Gurtowski, J., & Schatz, M. C. (n.d.). GenomeScope: Fast reference-free genome profiling from short reads. 3.
+Vurture, G. W., Sedlazeck, F. J., Nattestad, M., Underwood, C. J., Fang, H., Gurtowski, J., & Schatz, M. C. (2017). GenomeScope: fast reference-free genome profiling from short reads. Bioinformatics, 33(14), 2202-2204.
