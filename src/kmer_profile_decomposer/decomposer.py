@@ -67,107 +67,6 @@ class _KmerProfileModelParameters:
 
 
 @dataclass
-class _KmerProfileModelFitResult:
-    wrapped: OptimizeResult = field(repr=False)
-    peaks: int = field()
-    min_depth: float = field()
-    max_depth: float = field()
-    parameters: _KmerProfileModelParameters = field()
-    depths: NDArray = field(repr=False)
-    observed_counts: NDArray = field(repr=False)
-    predicted_counts: NDArray = field(repr=False)
-    error_counts: NDArray = field(repr=False)
-    peak_counts: Mapping[int, NDArray] = field(repr=False)
-
-    def _get_color(self, copy_number: int) -> str:
-        if copy_number == 0:
-            return "tab:red"
-        else:
-            return f"C{(copy_number)//2}"
-
-    def _get_line_style(self, copy_number: int) -> str:
-        if copy_number == 0:
-            return ":"
-        elif copy_number % 2 == 0:
-            return "-"
-        else:
-            return "--"
-
-    def _get_label(self, copy_number: int) -> str:
-        if copy_number == 0:
-            return "Errors"
-        else:
-            return f"Copy number = {copy_number}"
-
-    def plot_model(self, ax: Axes, scale: Literal["linear", "log"] = "linear") -> None:
-        depths = self.depths
-        ax.plot(self.depths, self.observed_counts, color="k", label="Observed", lw=2)
-        ax.plot(
-            self.depths,
-            self.predicted_counts,
-            color="lightgray",
-            label="Predicted",
-            lw=2,
-        )
-        ax.plot(
-            depths,
-            self.error_counts,
-            color=self._get_color(0),
-            label=self._get_label(0),
-            ls=self._get_line_style(0),
-        )
-        for peak in range(1, self.peaks + 1):
-            peak_counts = self.peak_counts[peak]
-            color = self._get_color(peak)
-            linestyle = self._get_line_style(peak)
-            label = self._get_label(peak)
-            ax.plot(depths, peak_counts, color=color, ls=linestyle, label=label)
-
-        ax.set_xlim(0, self.max_depth)
-        ax.set_xlabel("Coverage depth")
-        ax.set_ylabel("Frequency")
-        ax.legend(loc="upper right")
-        ymin = 1000 if scale == "log" else 0
-        ymax = max(counts.max() for counts in self.peak_counts.values()) * 1.1
-        ax.set_ylim(ymin, ymax)
-        if scale == "log":
-            ax.set_yscale("log")
-        ax.set_title("$\mathit{k}$-mer profile " + f"({scale} scale)")
-        for spine in ("top", "right"):
-            ax.spines[spine].set_visible(False)
-
-    def plot_probablity(self, ax: Axes) -> None:
-        depths = self.depths[self.depths <= self.max_depth]
-        error_counts = self.error_counts[self.depths <= self.max_depth]
-        predicted_counts = self.predicted_counts[self.depths <= self.max_depth]
-        ax.plot(
-            depths,
-            error_counts / predicted_counts,
-            color=self._get_color(0),
-            ls=self._get_line_style(0),
-            label=self._get_label(0),
-            clip_on=False
-        )
-        for peak in range(1, self.peaks + 1):
-            peak_counts = self.peak_counts[peak][self.depths <= self.max_depth]
-            ax.plot(
-                depths,
-                peak_counts / predicted_counts,
-                color=self._get_color(peak),
-                ls=self._get_line_style(peak),
-                label=self._get_label(peak),
-                clip_on=False
-            )
-        ax.set_xlim(0, self.max_depth)
-        ax.set_ylim(0, 1)
-        ax.set_xlabel("Coverage depth")
-        ax.set_ylabel("Probablity")
-        ax.legend(loc="upper right")
-        for spine in ("top", "right"):
-            ax.spines[spine].set_visible(False)
-
-
-@dataclass
 class KmerProfileModel:
     depths: NDArray
     counts: NDArray
@@ -231,10 +130,10 @@ class KmerProfileModel:
 
     def fit(
         self, haploid_depth: float, initial_parameters={}, least_squares_kw={}
-    ) -> _KmerProfileModelFitResult:
+    ) -> "_KmerProfileModelFitResult":
         default_initial_parameters = dict(
             error_dispersion=0.15,
-            error_weight=0.5,
+            error_weight=1,
             peak_dispersion_bias=0.5,
             peak_weights=np.ones(self.peaks) / (self.peaks + 1) / 2,
         )
@@ -257,11 +156,11 @@ class KmerProfileModel:
         ] * self.peaks  # peak_weights
         upper_bounds = [
             1,  # error_dispersion
-            1 - 1e-10,  # error_weight
+            10000,  # error_weight
             10000,  # haploid_depth
             1000,  # peak_dispersion_bias
         ] + [
-            1 - 1e-10
+            1
         ] * self.peaks  # peak_weights
         bounds = (lower_bounds, upper_bounds)
         least_squares_result = least_squares(
@@ -293,3 +192,105 @@ class KmerProfileModel:
         )
 
         return model_result
+
+
+@dataclass
+class _KmerProfileModelFitResult:
+    wrapped: OptimizeResult = field(repr=False)
+    peaks: int = field()
+    min_depth: float = field()
+    max_depth: float = field()
+    parameters: _KmerProfileModelParameters = field()
+    depths: NDArray = field(repr=False)
+    observed_counts: NDArray = field(repr=False)
+    predicted_counts: NDArray = field(repr=False)
+    error_counts: NDArray = field(repr=False)
+    peak_counts: Mapping[int, NDArray] = field(repr=False)
+
+    def _get_color(self, copy_number: int) -> str:
+        if copy_number == 0:
+            return "tab:red"
+        else:
+            return f"C{(copy_number)//2}"
+
+    def _get_line_style(self, copy_number: int) -> str:
+        if copy_number == 0:
+            return ":"
+        elif copy_number % 2 == 0:
+            return "-"
+        else:
+            return "--"
+
+    def _get_label(self, copy_number: int) -> str:
+        if copy_number == 0:
+            return "Errors"
+        else:
+            return f"Copy number = {copy_number}"
+
+    def plot_model(self, ax: Axes, scale: Literal["linear", "log"] = "linear") -> None:
+        depths = self.depths
+        ax.plot(self.depths, self.observed_counts, color="k", label="Observed", lw=2)
+        ax.plot(
+            self.depths,
+            self.predicted_counts,
+            color="lightgray",
+            label="Predicted",
+            lw=2,
+        )
+        ax.plot(
+            depths,
+            self.error_counts,
+            color=self._get_color(0),
+            label=self._get_label(0),
+            ls=self._get_line_style(0),
+        )
+        for peak in range(1, self.peaks + 1):
+            peak_counts = self.peak_counts[peak]
+            color = self._get_color(peak)
+            linestyle = self._get_line_style(peak)
+            label = self._get_label(peak)
+            ax.plot(depths, peak_counts, color=color, ls=linestyle, label=label)
+
+        ax.set_xlim(0, self.max_depth)
+        ax.set_xlabel("Coverage depth")
+        ax.set_ylabel("$\mathit{k}$-mer count")
+        ax.legend(loc="upper right")
+        ymin = 1000 if scale == "log" else 0
+        ymax = max(counts.max() for counts in self.peak_counts.values()) * 1.1
+        ax.set_ylim(ymin, ymax)
+        if scale == "log":
+            ax.set_yscale("log")
+        ax.set_title("$\mathit{k}$-mer profile " + f"({scale} scale)")
+        for spine in ("top", "right"):
+            ax.spines[spine].set_visible(False)
+
+    def plot_probablity(self, ax: Axes) -> None:
+        depths = self.depths[self.depths <= self.max_depth]
+        error_counts = self.error_counts[self.depths <= self.max_depth]
+        predicted_counts = self.predicted_counts[self.depths <= self.max_depth]
+        ax.plot(
+            depths,
+            error_counts / predicted_counts,
+            color=self._get_color(0),
+            ls=self._get_line_style(0),
+            label=self._get_label(0),
+            clip_on=False,
+        )
+        for peak in range(1, self.peaks + 1):
+            peak_counts = self.peak_counts[peak][self.depths <= self.max_depth]
+            ax.plot(
+                depths,
+                peak_counts / predicted_counts,
+                color=self._get_color(peak),
+                ls=self._get_line_style(peak),
+                label=self._get_label(peak),
+                clip_on=False,
+            )
+        ax.set_xlim(0, self.max_depth)
+        ax.set_ylim(0, 1)
+        ax.set_xlabel("Coverage depth")
+        ax.set_ylabel("Probablity")
+        ax.legend(loc="upper right")
+        ax.set_title("Copy number probablities")
+        for spine in ("top", "right"):
+            ax.spines[spine].set_visible(False)

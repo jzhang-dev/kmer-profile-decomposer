@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kmer_profile_decomposer"
+description = "Decompose a k-mer profile into several peaks each representing a copy number."
+readme = "README.md"
+version = "0.1.0"
+requires-python = ">=3.8"
+keywords = ["bioinformatics", "genomics", "kmer"]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "matplotlib >= 3.6.3",
+    "numpy >= 1.24.2",
+    "scipy >= 1.10.0",
+]
