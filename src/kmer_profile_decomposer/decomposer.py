@@ -123,35 +123,43 @@ class KmerProfileModel:
         r, p, weight = parameters.get_peak_parameters(peak)
         return self._get_component_counts(r, p, weight)
 
-    def _get_peak_log_counts(self, parameters: _KmerProfileModelParameters, peak: int)-> NDArray:
+    def _get_peak_log_counts(
+        self, parameters: _KmerProfileModelParameters, peak: int
+    ) -> NDArray:
         r, p, weight = parameters.get_peak_parameters(peak)
         return self._get_component_log_counts(r, p, weight)
 
-    def _get_predicted_counts(self, parameters: _KmerProfileModelParameters)-> NDArray:
+    def _get_predicted_counts(self, parameters: _KmerProfileModelParameters) -> NDArray:
         predicted_counts = self._get_error_counts(parameters)
         for peak in range(1, self.peaks + 1):
             predicted_counts += self._get_peak_counts(parameters, peak)
         return predicted_counts
 
-
-    def _get_residuals(self, parameters: _KmerProfileModelParameters, scale:Literal['linear', 'log'] = 'linear') -> NDArray:
+    def _get_residuals(
+        self,
+        parameters: _KmerProfileModelParameters,
+        scale: Literal["linear", "log"] = "linear",
+    ) -> NDArray:
         predicted_counts = self._get_predicted_counts(parameters)
-        if scale == 'linear':
+        if scale == "linear":
             return self._counts - predicted_counts
-        elif scale == 'log':
+        elif scale == "log":
             return np.log(self._counts) - np.log(predicted_counts)
 
-    def _linear_residual_function(self, packed_parameters, *args, **kw)-> NDArray:
+    def _linear_residual_function(self, packed_parameters, *args, **kw) -> NDArray:
         parameters = _KmerProfileModelParameters.unpack(packed_parameters)
-        return self._get_residuals(parameters, scale='linear')
+        return self._get_residuals(parameters, scale="linear")
 
-    def _log_residual_function(self, packed_parameters, *args, **kw)-> NDArray:
+    def _log_residual_function(self, packed_parameters, *args, **kw) -> NDArray:
         parameters = _KmerProfileModelParameters.unpack(packed_parameters)
-        return self._get_residuals(parameters, scale='log')
-
+        return self._get_residuals(parameters, scale="log")
 
     def fit(
-        self, haploid_depth: float, residuals:Literal['linear', 'log'] = 'linear', initial_parameters={}, least_squares_kw={}
+        self,
+        haploid_depth: float,
+        residuals: Literal["linear", "log"] = "linear",
+        initial_parameters={},
+        least_squares_kw={},
     ) -> "_KmerProfileModelFitResult":
         default_initial_parameters = dict(
             error_dispersion=0.15,
@@ -185,9 +193,9 @@ class KmerProfileModel:
             1
         ] * self.peaks  # peak_weights
         bounds = (lower_bounds, upper_bounds)
-        if residuals == 'linear':
+        if residuals == "linear":
             residual_function = self._linear_residual_function
-        elif residuals == 'log':
+        elif residuals == "log":
             residual_function = self._log_residual_function
         else:
             raise ValueError()
@@ -211,7 +219,9 @@ class KmerProfileModel:
         peak_log_probablities = {}
         for peak in range(1, self.peaks + 1):
             log_counts = fitted_model._get_peak_log_counts(fitted_parameters, peak)
-            peak_log_probablities[peak] = (log_counts - predicted_log_counts) / np.log(10)
+            peak_log_probablities[peak] = (log_counts - predicted_log_counts) / np.log(
+                10
+            )
 
         model_result = _KmerProfileModelFitResult(
             wrapped=least_squares_result,
@@ -245,7 +255,6 @@ class _KmerProfileModelFitResult:
     peak_counts: Mapping[int, NDArray] = field(repr=False)
     error_log_probablities: NDArray = field(repr=False)
     peak_log_probablities: Mapping[int, NDArray] = field(repr=False)
-
 
     def _get_color(self, copy_number: int) -> str:
         if copy_number == 0:
@@ -304,33 +313,43 @@ class _KmerProfileModelFitResult:
         for spine in ("top", "right"):
             ax.spines[spine].set_visible(False)
 
-    def plot_probablity(self, ax: Axes) -> None:
+    def plot_probablity(
+        self, ax: Axes, scale: Literal["linear", "log"] = "linear"
+    ) -> None:
         depths = self.depths[self.depths <= self.max_depth]
-        error_counts = self.error_counts[self.depths <= self.max_depth]
-        predicted_counts = self.predicted_counts[self.depths <= self.max_depth]
+        prob = self.error_log_probablities[self.depths <= self.max_depth]
+        if scale == "linear":
+            prob = np.power(10, prob)
         ax.plot(
             depths,
-            error_counts / predicted_counts,
+            prob,
             color=self._get_color(0),
             ls=self._get_line_style(0),
             label=self._get_label(0),
             clip_on=False,
         )
         for peak in range(1, self.peaks + 1):
-            peak_counts = self.peak_counts[peak][self.depths <= self.max_depth]
+            prob = self.peak_log_probablities[peak][self.depths <= self.max_depth]
+            if scale == "linear":
+                prob = np.power(10, prob)
             ax.plot(
                 depths,
-                peak_counts / predicted_counts,
+                prob,
                 color=self._get_color(peak),
                 ls=self._get_line_style(peak),
                 label=self._get_label(peak),
                 clip_on=False,
             )
         ax.set_xlim(0, self.max_depth)
-        ax.set_ylim(0, 1)
+        if scale == "linear":
+            ax.set_ylim(0, 1)
+        else:
+            ax.set_ylim(top=0)
         ax.set_xlabel("Coverage depth")
-        ax.set_ylabel("Probablity")
-        ax.legend(loc="upper right")
-        ax.set_title("Copy number probablities")
+        ylabel = "Probablity" if scale == "linear" else "$\log_{10}$ probablity"
+        ax.set_ylabel(ylabel)
+        ax.legend(loc="lower right")
+        title = "Copy number probablities" if scale == "linear" else "Copy number probablities (log scale)"
+        ax.set_title(title)
         for spine in ("top", "right"):
             ax.spines[spine].set_visible(False)
