@@ -97,16 +97,25 @@ class KmerProfileModel:
             raise ValueError()
         return log_likelihood
 
-    def _get_component_counts(self, r, p, weight) -> NDArray:
+    def _get_component_log_counts(self, r, p, weight) -> NDArray:
         log_likelihood = self._get_log_likelihood(r, p)
-        counts = np.exp(np.log(self._total_counts * weight) + log_likelihood)
+        return np.log(self._total_counts * weight) + log_likelihood
+
+    def _get_component_counts(self, r, p, weight) -> NDArray:
+        counts = np.exp(self._get_component_log_counts(r, p, weight))
         if np.isnan(counts).sum() > 0:
             raise ValueError()
+        # if counts.min() == 0:
+        #     raise ValueError()
         return counts
 
     def _get_error_counts(self, parameters: _KmerProfileModelParameters) -> NDArray:
         r, p, weight = parameters.get_error_parameters()
         return self._get_component_counts(r, p, weight)
+
+    def _get_error_log_counts(self, parameters: _KmerProfileModelParameters) -> NDArray:
+        r, p, weight = parameters.get_error_parameters()
+        return self._get_component_log_counts(r, p, weight)
 
     def _get_peak_counts(
         self, parameters: _KmerProfileModelParameters, peak: int
@@ -114,22 +123,35 @@ class KmerProfileModel:
         r, p, weight = parameters.get_peak_parameters(peak)
         return self._get_component_counts(r, p, weight)
 
-    def _get_predicted_counts(self, parameters: _KmerProfileModelParameters):
+    def _get_peak_log_counts(self, parameters: _KmerProfileModelParameters, peak: int)-> NDArray:
+        r, p, weight = parameters.get_peak_parameters(peak)
+        return self._get_component_log_counts(r, p, weight)
+
+    def _get_predicted_counts(self, parameters: _KmerProfileModelParameters)-> NDArray:
         predicted_counts = self._get_error_counts(parameters)
         for peak in range(1, self.peaks + 1):
             predicted_counts += self._get_peak_counts(parameters, peak)
         return predicted_counts
 
-    def _get_residuals(self, parameters: _KmerProfileModelParameters):
-        predicted_counts = self._get_predicted_counts(parameters)
-        return self._counts - predicted_counts
 
-    def _residual_function(self, packed_parameters, *args, **kw):
+    def _get_residuals(self, parameters: _KmerProfileModelParameters, scale:Literal['linear', 'log'] = 'linear') -> NDArray:
+        predicted_counts = self._get_predicted_counts(parameters)
+        if scale == 'linear':
+            return self._counts - predicted_counts
+        elif scale == 'log':
+            return np.log(self._counts) - np.log(predicted_counts)
+
+    def _linear_residual_function(self, packed_parameters, *args, **kw)-> NDArray:
         parameters = _KmerProfileModelParameters.unpack(packed_parameters)
-        return self._get_residuals(parameters)
+        return self._get_residuals(parameters, scale='linear')
+
+    def _log_residual_function(self, packed_parameters, *args, **kw)-> NDArray:
+        parameters = _KmerProfileModelParameters.unpack(packed_parameters)
+        return self._get_residuals(parameters, scale='log')
+
 
     def fit(
-        self, haploid_depth: float, initial_parameters={}, least_squares_kw={}
+        self, haploid_depth: float, residuals:Literal['linear', 'log'] = 'linear', initial_parameters={}, least_squares_kw={}
     ) -> "_KmerProfileModelFitResult":
         default_initial_parameters = dict(
             error_dispersion=0.15,
@@ -163,8 +185,14 @@ class KmerProfileModel:
             1
         ] * self.peaks  # peak_weights
         bounds = (lower_bounds, upper_bounds)
+        if residuals == 'linear':
+            residual_function = self._linear_residual_function
+        elif residuals == 'log':
+            residual_function = self._log_residual_function
+        else:
+            raise ValueError()
         least_squares_result = least_squares(
-            self._residual_function,
+            residual_function,
             _initial_parameters.pack(),
             bounds=bounds,
             **least_squares_kw,
@@ -177,6 +205,13 @@ class KmerProfileModel:
             peak: fitted_model._get_peak_counts(fitted_parameters, peak)
             for peak in range(1, self.peaks + 1)
         }
+        predicted_log_counts = np.log(predicted_counts)
+        error_log_counts = fitted_model._get_error_log_counts(fitted_parameters)
+        error_log_probablities = (error_log_counts - predicted_log_counts) / np.log(10)
+        peak_log_probablities = {}
+        for peak in range(1, self.peaks + 1):
+            log_counts = fitted_model._get_peak_log_counts(fitted_parameters, peak)
+            peak_log_probablities[peak] = (log_counts - predicted_log_counts) / np.log(10)
 
         model_result = _KmerProfileModelFitResult(
             wrapped=least_squares_result,
@@ -189,6 +224,8 @@ class KmerProfileModel:
             predicted_counts=predicted_counts,
             error_counts=error_counts,
             peak_counts=peak_counts,
+            error_log_probablities=error_log_probablities,
+            peak_log_probablities=peak_log_probablities,
         )
 
         return model_result
@@ -206,6 +243,9 @@ class _KmerProfileModelFitResult:
     predicted_counts: NDArray = field(repr=False)
     error_counts: NDArray = field(repr=False)
     peak_counts: Mapping[int, NDArray] = field(repr=False)
+    error_log_probablities: NDArray = field(repr=False)
+    peak_log_probablities: Mapping[int, NDArray] = field(repr=False)
+
 
     def _get_color(self, copy_number: int) -> str:
         if copy_number == 0:
