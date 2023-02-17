@@ -23,4 +23,4 @@ def test_demo():
     fig.savefig("tests/output/demo.png", dpi=300)
 
     prob_df = result.get_log_probablity_dataframe()
-    prob_df.to_csv("tests/output/log_probablities.tsv", sep="\t")
+    prob_df.to_csv("tests/output/log_probablities.tsv", sep="\t", index=False)
