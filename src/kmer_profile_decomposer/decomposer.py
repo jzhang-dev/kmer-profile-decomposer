@@ -8,6 +8,7 @@ from scipy.optimize._optimize import OptimizeResult
 from scipy.stats import nbinom
 import numpy as np
 from numpy.typing import NDArray
+import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
@@ -276,6 +277,24 @@ class _KmerProfileModelFitResult:
         else:
             return f"Copy number = {copy_number}"
 
+    def get_log_probablity_dataframe(
+        self, max_depth: float | None = None
+    ) -> pd.DataFrame:
+        _max_depth: float
+        if max_depth is None:
+            _max_depth = self.max_depth
+        else:
+            _max_depth = max_depth
+
+        columns: dict[str, NDArray] = {}
+        row_selection: NDArray = self.depths <= self.max_depth
+        columns["depth"] = self.depths[row_selection]
+        columns["CN=0"] = self.error_log_probablities[row_selection]
+        for peak in range(1, self.peaks + 1):
+            columns[f"CN={peak}"] = self.peak_log_probablities[peak][row_selection]
+        df = pd.DataFrame(columns)
+        return df
+
     def plot_model(self, ax: Axes, scale: Literal["linear", "log"] = "linear") -> None:
         depths = self.depths
         ax.plot(self.depths, self.observed_counts, color="k", label="Observed", lw=2)
@@ -349,7 +368,11 @@ class _KmerProfileModelFitResult:
         ylabel = "Probablity" if scale == "linear" else "$\log_{10}$ probablity"
         ax.set_ylabel(ylabel)
         ax.legend(loc="lower right")
-        title = "Copy number probablities" if scale == "linear" else "Copy number probablities (log scale)"
+        title = (
+            "Copy number probablities"
+            if scale == "linear"
+            else "Copy number probablities (log scale)"
+        )
         ax.set_title(title)
         for spine in ("top", "right"):
             ax.spines[spine].set_visible(False)

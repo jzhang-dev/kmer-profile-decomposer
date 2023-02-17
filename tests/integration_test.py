@@ -22,19 +22,5 @@ def test_demo():
     result.plot_probablity(axes[1, 1], scale='log')
     fig.savefig("tests/output/demo.png", dpi=300)
 
-    log_prob_df = (
-        pd.DataFrame(
-            dict(
-                depth=result.depths,
-                error=result.error_log_probablities,
-                **{
-                    f"CN={x}": probablities
-                    for x, probablities in result.peak_log_probablities.items()
-                },
-            ),
-            dtype=np.float128,
-        )
-        .set_index("depth")
-        .iloc[:2000, :]
-    )
-    log_prob_df.to_csv("tests/output/log_probablities.tsv", sep="\t")
+    prob_df = result.get_log_probablity_dataframe()
+    prob_df.to_csv("tests/output/log_probablities.tsv", sep="\t")
